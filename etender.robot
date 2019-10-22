@@ -63,6 +63,7 @@ ${locator.awards[0].suppliers[0].identifier.id}                xpath=//span[@id=
 ${locator_document_title}                                      xpath=//td[contains(@class,"doc-name")]//a[contains(.,"XX_doc_id_XX")]
 ${locator_document_href}                                       xpath=//td[contains(@class,"doc-name")]//a[contains(.,"XX_doc_id_XX")]//ancestor::td[contains(@class,"doc-name")]//preceding-sibling::td//a@href
 ${locator_document_description}                                xpath=//td[contains(@class,"doc-name")]//a[contains(.,"XX_doc_id_XX")]/following-sibling::p
+${locator_document_of}                                         xpath=//td[contains(@class,"doc-name")]//a[contains(.,"d-XX_doc_id_XX")]/parent::td@data-document-of
 ${locator.value.currency}                                      id=tenderCurrency
 ${locator.value.valueAddedTaxIncluded}                         id=includeVat
 ${locator.bids}                                                id=ParticipiantInfo_0
@@ -107,7 +108,7 @@ Wait Scroll Click
   Wait and Click  ${locator}  ${timeout}  True
 
 Wait and Click
-  [Arguments]  ${locator}  ${timeout}=5  ${scroll}=False
+  [Arguments]  ${locator}  ${timeout}=7  ${scroll}=False
   [Documentation]  Wait for visibility and then click
   Wait Until Element Is Visible  ${locator}  ${timeout}
   Run Keyword If  '${scroll}'=='True'  scrollIntoView by script  ${locator}
@@ -147,7 +148,7 @@ Wait and Get Attribute
   Log  ${tender_data}
 
   # Достаем айдишник плана для создания тендера
-  ${file_path}=  Get Variable Value  ${ARTIFACT_FILE}  artifact.yaml
+  ${file_path}=  Get Variable Value  ${ARTIFACT_FILE}  artifact_plan.yaml
   ${ARTIFACT}=  load_data_from  ${file_path}
   Set Global Variable  ${global_plan_id}    ${ARTIFACT.tender_uaid}
 
@@ -212,6 +213,7 @@ Login
   Дочекатись зникнення blockUI
   Wait and Input        xpath=//input[@name="planExternalId"]          ${global_plan_id}
   Wait and Click  id=searchPlan
+  Дочекатись зникнення blockUI
   Input text    id=title    ${title}
   Input text    id=description            ${description}
   Дочекатись зникнення blockUI
@@ -228,7 +230,6 @@ Login
   Run Keyword If  ${lots_count}>0  Run Keywords  Wait Scroll Click  id=isMultilots  AND  Додати лоти і їх предмети  ${lots_count}  ${lots}  ${items}
   ...           ELSE  Run Keywords  Додати мінімальний крок при наявності  ${tender_data}  AND  Input text  id=lotValue_0  ${budgetToStr}  AND  Додати предмети  ${items}  0
 # TODO: убрать костыль ▼, на переговорке создается по 2 лишних айтема для каждого лота
-  Run Keyword If    '${methodType}' in ('negotiation')  Видалити зайві айтеми
   Додати умови оплати при наявності  ${tender_data}
   Додати причину з описом при наявності  ${tender_data}
   Додати донора при наявності  ${tender_data}
@@ -242,15 +243,6 @@ Login
   Зберегти посилання
   Run Keyword And Return  Get Text  ${locator.tenderId}
   # TODO FIX ELASTIC ISSUES ON UAT and delete ↑
-
-
-Видалити зайві айтеми
-  # 2 последних
-  Wait Scroll Click  id=itemRemove_03
-  Wait Scroll Click  id=itemRemove_02
-  # 2 первых
-  Wait Scroll Click  id=itemRemove_10
-  Wait Scroll Click  id=itemRemove_10
 
 
 Створити тендер ESCO
@@ -442,7 +434,7 @@ Login
   [Arguments]  ${lot}  ${index}
   Wait and Input    id=lotTitle_${index}        ${lot['title']}
   Run Keyword If  '${USERS.users['Etender_Owner']['method_type']}' == 'esco'  Run Keyword and Return  Заповнити інформацію про лот ESCO  ${lot}  ${index}
-  Run Keyword If  '${USERS.users['Etender_Owner']['method_type']}' in ('aboveThresholdEU', 'aboveThresholdUA.defense', 'closeFrameworkAgreementUA')  Input Text   id=lotTitleEn_${index}        ${lot['title_en']}
+  Run Keyword If  '${USERS.users['Etender_Owner']['method_type']}' in ('aboveThresholdEU', 'aboveThresholdUA.defense', 'closeFrameworkAgreementUA','competitiveDialogueEU')  Input Text   id=lotTitleEn_${index}        ${lot['title_en']}
   Input Text        id=lotDescription_${index}  ${lot['description']}
   Input String      id=lotValue_${index}        ${lot['value']['amount']}
   Run Keyword Unless  '${USERS.users['Etender_Owner']['method_type']}' in ('negotiation')  Input String      id=minimalStep_${index}     ${lot['minimalStep']['amount']}
@@ -469,13 +461,19 @@ Login
   Додати предмет  ${item}  0  ${lots_count}  # len is 1 more than index
   Зберегти зміни в тендері
 
+Отримати індекс лоту
+  [Arguments]  ${lot_id}
+  ${lot_id}=  Get Element Attribute  xpath=//span[@ng-bind= "::lot.title" and contains(text(), '${lot_id}')]@id
+  [return]  ${lot_id[-1]}
+
 Додати предмет закупівлі в лот
   [Arguments]  ${username}  ${tender_uaid}  ${lot_id}  ${item}
   #Log   ${USERS.users['${username}'].lot_data}
+
+  ${lot_index}=  Отримати індекс лоту  ${lot_id}
   Перейти до редагування тендера    ${username}  ${tender_uaid}
-  ${lots_count}=  Get Length  ${USERS.users['${username}'].initial_data.data['lots']}
-  Wait Scroll Click  id=addLotItem_0
-  Додати предмет  ${item}  1  ${lots_count}
+  Wait Scroll Click  id=addLotItem_${lot_index}
+  Додати предмет  ${item}  1  ${lot_index}
   Зберегти зміни в тендері
 
 Додати предмет закупівлі в план
@@ -487,7 +485,7 @@ Login
   ${quantityStr}=  float to string 3f  ${quantity}
   Перейти на сторінку плану за потреби
   #Wait and Click  xpath=//a[contains(@href, '#/planDetails/')]
-  Wait Scroll Click  xpath=//a[contains(@ng-href, '#/updatePlan/')]
+  Wait Scroll Click  xpath=//a[contains(@ng-href, 'updatePlan/')]
   ${items_index}=  Get Matching Xpath Count  //textarea[contains(@id, 'itemsDescription')]
   Wait and Click  xpath=//button[@ng-click= 'addItem()']
   Wait and Input  xpath=//textarea[@id ='itemsDescription${items_index}']  ${items_description}
@@ -496,15 +494,16 @@ Login
   Wait and Click  xpath=//*[@id="unit_${items_index}"]//*[@class="selectize-input"]
   Wait and Input  xpath=//div[@class="selectize-input focus"]/input  ${unit}
   Sleep  3
+  Capture Page Screenshot
   Press Key  xpath=//div[@class="selectize-input focus"]/input  \\13
-
+  Capture Page Screenshot
   Wait and Click          xpath=//span[@ng-if = 'createPlanModel.apiId']  10
   Reload Page
 
 Видалити предмет закупівлі плану
   [Arguments]  ${username}  ${tender_uaid}  ${item_id}
   Перейти на сторінку плану за потреби
-  Wait Scroll Click  xpath=//a[contains(@ng-href, '#/updatePlan/')]  10
+  Wait Scroll Click  xpath=//a[contains(@ng-href, 'updatePlan/')]  10
   Sleep  5
   Wait Scroll Click  xpath=//h4[contains(text(), '№ 2')]//button[@ng-click = 'removeItem($index)']
   Wait and Click          xpath=//span[@ng-if = 'createPlanModel.apiId']  10
@@ -593,6 +592,22 @@ add feature
   \     Wait and Input  xpath=//*[@name="feature-${target}Option${feature_index}${index}"]  ${opt_title}
   \     Run Keyword If  '${opt_value}'!='0'  Input text  id=feature-${target}OptionValue${feature_index}${index}  ${opt_value}
 
+Заповнити інформацію про breakdown плану
+  [Arguments]  ${breakdown_list}
+  ${number_of_breakdown}=  Get Length  ${breakdown_list}
+
+      :FOR  ${i}  IN RANGE  ${number_of_breakdown}
+  \    Run Keyword Unless  '${i}'=='0'  Wait Scroll Click  id=addBreakdown  # present by default
+  \    ${breakdown_title}=  Get From Dictionary  ${breakdown_list[${i}]}  title
+  \    ${breakdown_title}=  get_breakdown_title_value  ${breakdown_title}
+  \    Select From List By Label   id=breakdownTitle${i}  ${breakdown_title}
+  \    ${breakdown_description}=  Get From Dictionary  ${breakdown_list[${i}]}  description
+  \    Input Text  id=breakdownDescription${i}    ${breakdown_description}
+  \    ${breakdown_amount}=  Get From Dictionary  ${breakdown_list[${i}].value}  amount
+  \    ${breakdown_amount}=  float_to_string_2f  ${breakdown_amount}
+  \    Input Text  id=breakDownValue${i}    ${breakdown_amount}
+
+
 Створити план
   [Arguments]  ${username}  ${arguments}
   Log  ${arguments}
@@ -600,6 +615,7 @@ add feature
   ${items}=             Get From Dictionary     ${plan}                         items
   ${description}=       Get From Dictionary     ${plan.budget}                  description
   ${amount}=            Get From Dictionary     ${plan.budget}                  amount
+  ${breakdown_list}=    Get From Dictionary     ${plan.budget}                  breakdown
   ${amount}=            float_to_string_2f      ${amount}
   ${number_of_items}=   Get Length              ${items}
   ${cpv_id}=            Get From Dictionary     ${plan.classification}          id
@@ -607,7 +623,7 @@ add feature
   ${procurementMethodTypeStr}=  get procedure type  ${procurementMethodType}
   Дочекатись зникнення blockUI
   Wait and Click        id=qa_myPlans
-  Wait and Click        xpath=//a[@href="#/createPlan"]
+  Wait and Click        xpath=//a[@href="createPlan"]
   Дочекатись зникнення blockUI
   Заповнити інформацію про buyers при наявності  ${plan.buyers}
 
@@ -617,6 +633,9 @@ add feature
 
   Wait and Input        id=description          ${description}
   Input text            id=value                ${amount}
+
+  Заповнити інформацію про breakdown плану  ${breakdown_list}
+
   Select From List By Label     xpath=//select[@ng-model="data.projectBudget.period.startDate"]     2020
   Select From List By Label     xpath=//select[@ng-model="data.projectBudget.period.endDate"]       2020
   Select From List By Index     xpath=//select[@name="startDateMonth"]          6
@@ -647,7 +666,7 @@ add feature
   Wait Until Keyword Succeeds   2x  10 sec  Дочекатися завершення обробки плану
   ${plan_id}=  Get Text  id=planId
   Зберегти посилання
-  [Return]  ${plan_id.split()[0]}
+  [Return]  ${plan_id}
 
 Заповнити інформацію про buyers при наявності  # Заполнение объекта при создании плана
   [Arguments]  ${buyers}
@@ -737,7 +756,7 @@ add feature
   [Arguments]  ${additionalClassification}  ${index}  ${lot_index}
   ${description}=   Get From Dictionary  ${additionalClassification}  description
   ${id}=            Get From Dictionary  ${additionalClassification}  id
-  Wait and Click    id=openAddClassificationRoadsModal${lot_index}${index}
+  Wait and Click    id=openAddClassificationRoadsModal0${index}
   Wait and Input    xpath=//div[contains(@id, "addClassificationRoads_") and contains(@class,"modal")]//input  ${id}
   Дочекатись зникнення blockUI
   Wait and Click    xpath=//div[contains(@id, "addClassificationRoads_")]//td[contains(., '${id}')]
@@ -771,8 +790,7 @@ add feature
   Reload Page
   Дочекатись зникнення blockUI
   Wait Until Element Is Visible      id=planId  30
-  ${plan_id}=                        Get Text  id=planId
-  ${plan_id}=                        Set Variable  ${plan_id.split()[0]}
+  ${plan_id}=                        Get Text  id=planId  #id=planId_0
   Log  ${plan_id}
   Should Match Regexp                ${plan_id}  UA-P-\\d{4}-.*
 
@@ -846,141 +864,54 @@ add feature
 
 Додати предмет
   [Arguments]  ${item}  ${index}  ${lot_index}
-  Run Keyword If  '${USERS.users['${tender_owner}'].method_type}' == 'esco'  run keyword and return  Додати предмет ESCO  ${item}  ${index}  ${lot_index}
-  Run Keyword If  '${USERS.users['${tender_owner}'].method_type}' == 'closeFrameworkAgreementUA'  run keyword and return  Додати предмет Framework Agreement  ${item}  ${index}  ${lot_index}
-  ${items_description}=  Get From Dictionary    ${item}                     description
-  ${items_descriptionEN}=  Get From Dictionary  ${item}                     description_en
-  ${quantity}=           set Variable           ${item.quantity}
-  ${unit}=               Get From Dictionary    ${item.unit}                name
-  ${cpv}=                Get From Dictionary    ${item.classification}      id
+  ${procedureType}=  set variable  ${USERS.users['${tender_owner}'].method_type}
   log  ${item}
-  ${deliveryDateStart}=  Get From Dictionary    ${item.deliveryDate}        startDate
-  ${deliveryDateEnd}=    Get From Dictionary    ${item.deliveryDate}        endDate
-  ${deliveryDateStart}=  convert_date_to_etender_format  ${deliveryDateStart}
-  ${deliveryDateEnd}=    convert_date_to_etender_format  ${deliveryDateEnd}
-  ${latitude}=           Get From Dictionary    ${item.deliveryLocation}    latitude
-  ${longitude}=          Get From Dictionary    ${item.deliveryLocation}    longitude
-  ${region}=             Get From Dictionary    ${item.deliveryAddress}     region
-  ${locality}=           Get From Dictionary    ${item.deliveryAddress}     locality
-  ${locality}=           convert_common_string_to_etender_string  ${locality}
-  ${postalCode}=         Get From Dictionary  ${item.deliveryAddress}   postalCode
-  ${streetAddress}=      Get From Dictionary  ${item.deliveryAddress}   streetAddress
-  Run Keyword If  '${USERS.users['${tender_owner}'].method_type}' != 'closeFrameworkAgreementUA'   Wait and Input    id=itemsDescription${lot_index}${index}      ${items_description}
-  ...             ELSE  Wait and Input    id=itemsDescription0${index}      ${items_description}
-  Run Keyword If  '${USERS.users['${tender_owner}'].method_type}' != 'closeFrameworkAgreementUA'  Run Keyword And Ignore Error  Wait and Input    id=itemsDescriptionEN${lot_index}${index}      ${items_descriptionEN}
-  ...             ELSE  Run Keyword And Ignore Error  Wait and Input    id=itemsDescriptionEN0${index}      ${items_descriptionEN}
-  Input String      id=itemsQuantity${lot_index}${index}         ${quantity}
-  Wait and Click    xpath=//unit[@id="itemsUnit${lot_index}${index}"]//input[@type="search"]
-  #Wait and Click    xpath=(//div[contains(@ng-model,"unit.selected")]//input[@type="search"])[${index}+1]
-  ${items_count}=   Get Matching Xpath Count   xpath=//div[contains(@ng-model,"unit.selected")]//input[@type="search"]
-  #${items_count}=   Get Length  ${items_count}
-  Wait and Input    xpath=(//div[contains(@ng-model,"unit.selected")]//input[@type="search"])[${items_count}]  ${unit}
-  Wait and Click    xpath=//div[contains(@class,"selectize-dropdown") and contains(@repeat,"unit")]//div[@role="option" and contains(@class,"active")]
+  ${locality}=           convert_common_string_to_etender_string  ${item.deliveryAddress.locality}
+  Wait and Input    id=itemsDescription${lot_index}${index}      ${item.description}
+  Run Keyword And Ignore Error  Wait and Input    id=itemsDescriptionEN${lot_index}${index}      ${item.description_en}
+  run keyword if  '${procedureType}' != 'esco'  Заповнити певні поля за наявності  ${item}  ${index}  ${lot_index}
 
   Wait Scroll Click     id=openClassificationModal${lot_index}${index}
   #Sleep 2
-  Wait and Input        id=classificationCode  ${cpv}
+  Wait and Input        id=classificationCode   ${item.classification.id}
   Дочекатись зникнення blockUI
-  Wait and Click    xpath=//td[contains(., '${cpv}')]
+  Wait and Click    xpath=//td[contains(., '${item.classification.id}')]
   Wait and Click    id=classification_choose
   Дочекатись зникнення blockUI
-
+  ${region}=             Get From Dictionary    ${item.deliveryAddress}     region
   ${status}  ${value}=  Run Keyword And Ignore Error  Get From Dictionary  ${item}  additionalClassifications
   log to console    Attempt to get 1st additonal classification scheme: ${status}
   Run Keyword If    '${status}' == 'PASS'   Опрацювати дотаткові класифікації  ${item.additionalClassifications}  ${index}  ${lot_index}
-  Wait and Input    id=delStartDate${lot_index}${index}        ${deliveryDateStart}
-  Wait and Input    id=delEndDate${lot_index}${index}          ${deliveryDateEnd}
-  Wait and Select By Label  id=region_${lot_index}${index}  ${region}
-  Run Keyword If  '${region}' != 'місто Київ'  Input text  xpath=//input[@name="otherCity_${lot_index}${index}"]  ${locality}
-  Wait and Input    id=street_${lot_index}${index}   ${streetAddress}
-  Wait and Input    id=postIndex_${lot_index}${index}    ${postalCode}
+  run keyword if  '${procedureType}' != 'esco'  Заповнити дату за наявності  ${item}  ${index}  ${lot_index}
+  Wait and Select By Label  id=region_${lot_index}${index}  ${item.deliveryAddress.region}
+  Run Keyword If  '${item.deliveryAddress.region}' != 'місто Київ'  Input text  xpath=//input[@name="otherCity_${lot_index}${index}"]  ${locality}
+  Wait and Input    id=street_${lot_index}${index}   ${item.deliveryAddress.streetAddress}
+  Wait and Input    id=postIndex_${lot_index}${index}    ${item.deliveryAddress.postalCode}
 
-
-Додати предмет ESCO
+Заповнити певні поля за наявності
   [Arguments]  ${item}  ${index}  ${lot_index}
-  ${items_description}=  Get From Dictionary    ${item}                     description
-  ${items_descriptionEN}=  Get From Dictionary  ${item}                     description_en
   ${quantity}=           Set Variable           ${item.quantity}
-  ${cpv}=                Get From Dictionary    ${item.classification}      id
-  log  ${item}
-  ${latitude}=           Get From Dictionary    ${item.deliveryLocation}    latitude
-  ${longitude}=          Get From Dictionary    ${item.deliveryLocation}    longitude
-  ${region}=             Get From Dictionary    ${item.deliveryAddress}     region
-  ${locality}=           Get From Dictionary    ${item.deliveryAddress}     locality
-  ${locality}=           convert_common_string_to_etender_string  ${locality}
-  ${postalCode}=         Get From Dictionary  ${item.deliveryAddress}   postalCode
-  ${streetAddress}=      Get From Dictionary  ${item.deliveryAddress}   streetAddress
-  Wait and Input    id=itemsDescription${lot_index}${index}      ${items_description}
-  Run Keyword And Ignore Error  Wait and Input    id=itemsDescriptionEN${lot_index}${index}      ${items_descriptionEN}
-  Wait Scroll Click     id=openClassificationModal${lot_index}${index}
-  #Sleep 2
-  Wait and Input        id=classificationCode  ${cpv}
-  Дочекатись зникнення blockUI
-  Wait and Click    xpath=//td[contains(., '${cpv}')]
-  Wait and Click    id=classification_choose
-  Дочекатись зникнення blockUI
-
-  ${status}  ${value}=  Run Keyword And Ignore Error  Get From Dictionary  ${item}  additionalClassifications
-  log to console    Attempt to get 1st additonal classification scheme: ${status}
-  Run Keyword If    '${status}' == 'PASS'   Опрацювати дотаткові класифікації  ${item.additionalClassifications}  ${index}  ${lot_index}
-  Wait and Select By Label  id=region_${lot_index}${index}  ${region}
-  Run Keyword If  '${region}' != 'місто Київ'  Input text  xpath=//input[@name="otherCity_${lot_index}${index}"]  ${locality}
-  Wait and Input    id=street_${lot_index}${index}   ${streetAddress}
-  Wait and Input    id=postIndex_${lot_index}${index}    ${postalCode}
-
-Додати предмет Framework Agreement
-  [Arguments]  ${item}  ${index}  ${lot_index}
-  ${items_description}=  Get From Dictionary    ${item}                     description
-  ${items_descriptionEN}=  Get From Dictionary  ${item}                     description_en
-  ${quantity}=           set Variable           ${item.quantity}
-  ${unit}=               Get From Dictionary    ${item.unit}                name
-  ${cpv}=                Get From Dictionary    ${item.classification}      id
-  log  ${item}
-  ${deliveryDateStart}=  Get From Dictionary    ${item.deliveryDate}        startDate
-  ${deliveryDateEnd}=    Get From Dictionary    ${item.deliveryDate}        endDate
-  ${deliveryDateStart}=  convert_date_to_etender_format  ${deliveryDateStart}
-  ${deliveryDateEnd}=    convert_date_to_etender_format  ${deliveryDateEnd}
-  ${latitude}=           Get From Dictionary    ${item.deliveryLocation}    latitude
-  ${longitude}=          Get From Dictionary    ${item.deliveryLocation}    longitude
-  ${region}=             Get From Dictionary    ${item.deliveryAddress}     region
-  ${locality}=           Get From Dictionary    ${item.deliveryAddress}     locality
-  ${locality}=           convert_common_string_to_etender_string  ${locality}
-  ${postalCode}=         Get From Dictionary  ${item.deliveryAddress}   postalCode
-  ${streetAddress}=      Get From Dictionary  ${item.deliveryAddress}   streetAddress
-  Wait and Input    id=itemsDescription0${index}      ${items_description}
-  Wait and Input    id=itemsDescriptionEN0${index}      ${items_descriptionEN}
   Input String      id=itemsQuantity0${index}         ${quantity}
   Wait and Click    xpath=//unit[@id="itemsUnit0${index}"]//input[@type="search"]
   #Wait and Click    xpath=(//div[contains(@ng-model,"unit.selected")]//input[@type="search"])[${index}+1]
   ${items_count}=   Get Matching Xpath Count   xpath=//div[contains(@ng-model,"unit.selected")]//input[@type="search"]
   #${items_count}=   Get Length  ${items_count}
-  Wait and Input    xpath=(//div[contains(@ng-model,"unit.selected")]//input[@type="search"])[${items_count}]  ${unit}
+  Wait and Input    xpath=(//div[contains(@ng-model,"unit.selected")]//input[@type="search"])[${items_count}]  ${item.unit.name}
   Wait and Click    xpath=//div[contains(@class,"selectize-dropdown") and contains(@repeat,"unit")]//div[@role="option" and contains(@class,"active")]
 
-  Wait Scroll Click     id=openClassificationModal0${index}
-  #Sleep  2
-  Wait and Input        id=classificationCode  ${cpv}
-  Дочекатись зникнення blockUI
-  Wait and Click    xpath=//td[contains(., '${cpv}')]
-  Wait and Click    id=classification_choose
-  Дочекатись зникнення blockUI
-
-  ${status}  ${value}=  Run Keyword And Ignore Error  Get From Dictionary  ${item}  additionalClassifications
-  log to console    Attempt to get 1st additonal classification scheme: ${status}
-  Run Keyword If    '${status}' == 'PASS'   Опрацювати дотаткові класифікації  ${item.additionalClassifications}  ${index}  ${lot_index}
-  Wait and Input    id=delStartDate0${index}        ${deliveryDateStart}
-  Wait and Input    id=delEndDate0${index}          ${deliveryDateEnd}
-  Wait and Select By Label  id=region_0${index}  ${region}
-  Run Keyword If  '${region}' != 'місто Київ'  Input text  xpath=//input[@name="otherCity_0${index}"]  ${locality}
-  Wait and Input    id=street_0${index}   ${streetAddress}
-  Wait and Input    id=postIndex_0${index}    ${postalCode}
+Заповнити дату за наявності
+  [Arguments]  ${item}  ${index}  ${lot_index}
+  ${deliveryDateStart}=  convert_date_to_etender_format  ${item.deliveryDate.startDate}
+  ${deliveryDateEnd}=    convert_date_to_etender_format  ${item.deliveryDate.endDate}
+  Wait and Input    id=delStartDate${lot_index}${index}        ${deliveryDateStart}
+  Wait and Input    id=delEndDate${lot_index}${index}          ${deliveryDateEnd}
 
 
 Видалити предмет закупівлі
-  [Arguments]  ${username}  ${tender_uaid}  ${index}  ${lot_index}
+  [Arguments]  ${username}  ${tender_uaid}  ${index}  ${lot_id}
+  ${lot_index}=  Отримати індекс лоту  ${lot_id}
   Перейти до редагування тендера    ${username}  ${tender_uaid}
-  Run Keyword If  '${USERS.users['${tender_owner}'].method_type}' != 'closeFrameworkAgreementUA'  Wait and Click  id=itemRemove_11
-  ...             ELSE  Wait and Click  id=itemRemove_01
+  Wait and Click  id=itemRemove_${lot_index}1
   Зберегти зміни в тендері
 
 Додати неціновий показник на предмет
@@ -1177,6 +1108,7 @@ add feature
 
 Завантажити документ в лот
   [Arguments]  ${username}  ${file}  ${tender_uaid}  ${lot_id}
+  Дочекатись зникнення blockUI
   Wait and Select By Label  xpath=//div[@id="treeDocs0"]//select[@id="docType"]  Інші
   Завантажити док  ${username}  ${file}  xpath=//button[contains(@id, "lot_doc")]
 
@@ -1309,8 +1241,8 @@ add feature
 
 Отримати інформацію із плану про tender.tenderPeriod.startDate
   # TODO: кейворд некорректный, цбд ждет 2019-08-20T00:00:00+03:00, которую мы никак не заполним
-  ${tender_period_month}=  Wait and Get Text   id=qa_plan_tender_period_start_month
-  ${tender_period_year}=  Wait and Get Text  id=qa_plan_tender_period_start_year
+  ${tender_period_month}=  Wait and Get Text   id=qa_planTenderPeriodStartMonth
+  ${tender_period_year}=  Wait and Get Text  id=qa_planTenderPeriodStartYear
   return from keyword  ${tender_period_year} + ${tender_period_month}
 
 Отримати інформацію із плану про items[${n}].description
@@ -1323,8 +1255,8 @@ add feature
 
 
 Отримати інформацію із плану про items[${n}].deliveryDate.endDate
-#  ${return_value}=  Wait and Get Text  ${item_row}//*[contains(@id,'delivery_end')]
-#  Run Keyword And Return    convert_etender_date_to_iso_format   ${return_value.replace(u'по ','')}, 00:00
+  ${return_value}=  Wait and Get Text  xpath=//*[contains(@id,'item_deliveryDate_0${n}')]
+  Run Keyword And Return    convert_etender_date_to_iso_format   ${return_value.replace(u'по ','')}, 00:00
 
 Отримати інформацію із плану про items[${n}].unit.code
   ${return_value}=  Wait and Get Text  xpath=//*[contains(@id,'item_unit_0${n}')]
@@ -1346,6 +1278,33 @@ add feature
 
 Отримати інформацію із плану про items[${n}].classification.id
   Run Keyword And Return  Wait and Get Text  xpath=//*[contains(@id,'classification_code_0${n}')]
+
+
+Отримати інформацію про agreements[${n}].agreementID
+
+
+
+Отримати інформацію про items[${n}].quantity
+  run keyword and return  Wait and Get Text  xpath=//td[@class='itemQuantity']//span[contains(@id, 'item_quantity_0${n}')]
+
+
+Отримати інформацію про lots[${n}].value.amount
+  run keyword and return  Wait and Get Attribute  xpath=//span[@id='lotValue_${n}' and @class='hidden-xs fwn pl15 ng-binding']  value
+
+
+Отримати інформацію про lots[${n}].minimalStep.amount
+  ${result}=  Wait and Get Text  id=lotMinimalStep_${n}
+  run keyword and return  parse_currency_value_with_spaces  ${result}
+
+Отримати інформацію про features[${n}].title
+  run keyword and return  wait and get text  xpath=//div[@id='item-futers-0-${n}']//span[@name='item']
+
+
+Отримати інформацію про features[${n}].description
+  run keyword and return  wait and get text  xpath=//div[@id='item-futers-0-${n}']//span[@ng-bind='::feature.description']
+
+Отримати інформацію про features[${n}].featureOf
+ #run keyword and return  wait and get text  xpath=//div[@id='item-futers-0-${n}']//span
 
 
 Отримати інформацію із пропозиції
@@ -1593,13 +1552,13 @@ Select From List By Partial Label
   Reload Page
   Дочекатись зникнення blockUI
   Відкрити розділ запитань
-  Wait Scroll Click     id=addAnswer_0
+  Wait Scroll Click     xpath=//*[contains(@id, "addAnswer_")]  # id=addAnswer_0
   Wait and Input        xpath=//*[@name="questionContainer"]/form/div/textarea            ${answer}
   Wait Scroll Click     xpath=//*[@name="questionContainer"]/form/div/span/button[1]
   Sleep  5
 
 Відкрити розділ запитань
-  Wait Scroll Click     xpath=//li[@id="naviTitle1"]/span
+  JavascriptClick  '//li[@id="naviTitle1"]/span'
   Дочекатись зникнення blockUI
 
 scrollIntoView by script
@@ -1655,8 +1614,18 @@ Input String
   Run Keyword  Редагувати поле лота ${field}  ${lot_id}  ${new_value}
   Зберегти зміни в тендері
 
+
+Натиснути кнопку зберегти зміни у тендері
+  ${locator}=  Set Variable  'Access to the path'
+  :FOR  ${i}  IN RANGE  3
+  \       Wait Scroll Click     id=SaveChanges
+  \       ${mutex_status}=  Run Keyword And Return Status  Wait Until Page Contains  ${locator}  5
+  \       Return From Keyword If  '${mutex_status}'=='False'
+  \       Sleep  20
+
+
 Зберегти зміни в тендері
-  Wait Scroll Click     id=SaveChanges
+  Run Keyword  Натиснути кнопку зберегти зміни у тендері
   Run Keyword And Ignore Error  Wait Scroll Click  xpath=//div[@id="SignModal" and //div[contains(@class,"modal-dialog")]//div[contains(.,"будь ласка, перевірте статус")]]//button[.="Закрити"]  #close info dialog, if present
   Дочекатись зникнення blockUI
 
@@ -2008,6 +1977,22 @@ Input String
   [return]  ${return_value}
 
 
+Отримати дані про clarificationsUntil
+  Reload Page
+  Дочекатись зникнення blockUI
+  Run Keyword And Return  Get Text  xpath=//*[@id='qa_ComplaintPeriodFinished']
+
+
+Отримати інформацію про enquiryPeriod.clarificationsUntil
+  ${return_value}=  Wait Until Keyword Succeeds   10 s  5 x  Отримати дані про clarificationsUntil
+  ${return_value}=  Set Variable  ${return_value.replace(u'Період подачі вимог/скарг на умови закупівлі завершився - ','')}
+  Log  ${return_value}
+  ${return_value}=  add_minutes_to_etender_date  ${return_value}
+  Log  ${return_value}
+  ${return_value}=   convert_etender_date_to_iso_format   ${return_value}
+  [return]  ${return_value}
+
+
 Отримати інформацію про items[0].additionalClassifications[0].id
   ${return_value}=   Отримати текст із поля і показати на сторінці  items[0].additionalClassifications[0].id
   [return]  ${return_value.split(' ')[0]}
@@ -2048,7 +2033,7 @@ Input String
   Відкрити розділ Деталі Закупівлі
   ${i}=  Evaluate  ${n}+1
   ${i}=  Convert To String  ${i}
-  ${return_value}=  Get Text  xpath=(//div[@ng-if="award.complaintPeriod.endDate"]/div[2]/span)[${i}]
+  ${return_value}=  Get Text  xpath=//div[@ng-if="award.complaintPeriod.endDate"]/div[2]/span
   ${return_value}=  Set Variable  ${return_value.replace(u'по ','')}
   Run Keyword And Return     convert_etender_date_to_iso_format_and_add_timezone   ${return_value}
 
@@ -2424,12 +2409,12 @@ Input String
 
 Відкрити розділ Деталі Закупівлі
   Дочекатись зникнення blockUI
-  Wait Scroll Click     xpath=//li[@id="naviTitle0"]/span  # go to Деталі Закупівлі tab
+  JavascriptClick  '//li[@id="naviTitle0"]/span'  # go to Деталі Закупівлі tab
   Дочекатись зникнення blockUI
 
 Відкрити розділ вимог і скарг
   Дочекатись зникнення blockUI
-  Wait Scroll Click     xpath=//li[@id="naviTitle2"]/span  # go to complaints
+  JavascriptClick     '//li[@id="naviTitle2"]/span'  # go to complaints
   Дочекатись зникнення blockUI
 
 Заповнити інформацію про постачальника
@@ -2504,6 +2489,7 @@ Input String
   Підтвердити переможця
   Sleep  5
 
+
 Створити постачальника, додати документацію і підтвердити його
   [Arguments]  ${username}  ${tender_uaid}  ${object}  ${document}
   Sleep  30
@@ -2513,12 +2499,9 @@ Input String
   Run Keyword  Заповнити інформацію про постачальника  ${username}  ${tender_uaid}  ${object}  ${document}
   Run Keyword  Оцінити постачальника в limited процедурі  ${username}  ${document}
   Run Keyword  Підтвердити постачальника в limited процедурі  ${username}
-
   ${methodType}=  Get From Dictionary  ${USERS.users['${username}']}  method_type
-  Run Keyword If  '${methodType}' in ('negotiation')  Заповнити інформацію про постачальника  ${username}  ${tender_uaid}  ${object}  ${document}
-  Run Keyword If  '${methodType}' in ('negotiation')  Оцінити постачальника в limited процедурі  ${username}  ${document}
-  Run Keyword If  '${methodType}' in ('negotiation')  Підтвердити постачальника в limited процедурі  ${username}
   Sleep  15
+
 
 Wait for upload
   Reload Page
@@ -2702,25 +2685,34 @@ temporary keyword for title update
 Відхилити кваліфікацію
   [Arguments]  ${username}  ${tender_uaid}  ${bid_index}
   Reload Page
-  Wait Scroll Click  xpath=//button[@id = '#qa_rejectQualif' and @data-target='#cansel-0-${bid_index}']  15
-  Wait and Click     xpath=//div[@id='cansel-0-${bid_index}']//button[@id="qa_signRejectionPrequalification"]  10
-  Підписати ЕЦП
+  Дочекатись зникнення blockUI
+  ${is_btn_visible}=  Run Keyword And Return Status  Element Should Be Visible  xpath=//button[@id = '#qa_rejectQualif' and @data-target='#cansel-0-${bid_index}']
+  run keyword if  '${is_btn_visible}'=='True'  Wait Scroll Click  xpath=//button[@id = '#qa_rejectQualif' and @data-target='#cansel-0-${bid_index}']  15
   Capture Page Screenshot
-  Sleep  30
+  Wait Until Page Contains  Підстави для скасування  60
+
   Capture Page Screenshot
-  Reload Page
+#  Reload Page
   Wait and Click  id=qa_cause0  7
   Wait and Input  id=qa_qualifCancelDescr  texttexttext
   Wait and Click  id=qa_disqualifyPrequalification  10
   Reload Page
+  Дочекатись зникнення blockUI
 
 
 Скасувати кваліфікацію
   [Arguments]  ${username}  ${tender_uaid}  ${bid_index}
-  Sleep  30
+  Wait Until Keyword Succeeds  3 x  10 s   Натиснути скасування прекваліфікації  ${bid_index}
+
+
+Натиснути скасування прекваліфікації
+  [Arguments]  ${bid_index}
   Reload Page
-  Sleep  15
-  Wait Scroll Click  xpath=//div[@id='qa_qualification_block_0${bid_index}']//button[@class='btn btn-sm btn-danger ml15 mb-10 mt15 ng-isolate-scope']
+  Дочекатись зникнення blockUI
+  Capture Page Screenshot
+  JavascriptClick  '//div[@id="qa_qualification_block_0${bid_index}"]//button[@id="qa_cancelQualification"]'
+  Дочекатись зникнення blockUI
+
 
 Підтвердити постачальника
   [Arguments]  ${username}  ${tender_uaid}  ${award_num}
@@ -2737,6 +2729,8 @@ temporary keyword for title update
   RUN KEYWORD IF  '${status}'=='True'  Wait and Click         id=qa_selfQualified  10
   Підтвердити переможця
 
+Затвердити постачальників
+  Wait and Click  id=submitPreQualification  10
 
 Дискваліфікувати постачальника
   [Arguments]  ${username}  ${tender_uaid}  ${award_num}
@@ -2754,6 +2748,7 @@ temporary keyword for title update
   Перейти до оцінки кандидата
   Wait Scroll Click     id=qa_NextStep
   Відхилити переможця
+  Sleep  5
   Wait and Click  xpath=//input[@ng-model="checked"]
   Wait and Input  id=qa_causeDesc  Hello
   Wait and Click  id=qa_CancelAward
@@ -2772,7 +2767,7 @@ temporary keyword for title update
   Wait and Click    id=qa_disqualify_award
 
 Перейти до оцінки кандидата
-  Sleep  10
+  Sleep  20
   Wait Scroll Click    xpath=//a[@data-target="#modalGetAwards"]
   Дочекатись зникнення blockUI
 
@@ -2834,24 +2829,11 @@ Wait for doc upload in qualification
   Дочекатись зникнення blockUI
   Відкрити розділ Деталі Закупівлі
   Відкрити подробиці кваліфікації за індексом  ${qualification_num}
-  ${file_path}  ${file_name}  ${file_content}=   create_fake_doc
-  ${status}=  Run Keyword And Return Status  Element Should Be Visible  xpath=//div[@id="qa_qualification_block_0${qualification_num}"]//button[@id="qa_uploadApprovalDoc"]
-  RUN KEYWORD IF  '${status}'=='True'  Завантажити док  ${username}  ${file_path}  xpath=//div[@id="qa_qualification_block_0${qualification_num}"]//button[@id="qa_uploadApprovalDoc"]
-  ...         ELSE                   Завантажити док  ${username}  ${file_path}  xpath=//div[contains(@id, "qa_qualification_block_0")]//button[@id="qa_uploadApprovalDoc"]
-# Sign qualification object
-  Відкрити подробиці кваліфікації за індексом  ${qualification_num}
-  ${newstatus}=  Run Keyword And Return Status  Element Should Be Visible  xpath=//div[@id="aply-0-${qualification_num}"]//button[@ng-click="showSignModalQualification(qualification)"]
-  run keyword if  '${newstatus}'=='True'  Wait and Click    xpath=//div[@id="aply-0-${qualification_num}"]//button[@ng-click="showSignModalQualification(qualification)"]
-  ...         ELSE                      Wait and Click    xpath=//div[contains(@id, "aply-0-")]//button[@ng-click="showSignModalQualification(qualification)"]
-  Підписати ЕЦП
-  Capture Page Screenshot
-  Sleep  30
-  Capture Page Screenshot
-  Reload Page
 
 # Set qualification checkboxes and approve it
   Sleep  10
   Відкрити подробиці кваліфікації за індексом  ${qualification_num}
+  ${newstatus}=  Run Keyword And Return Status  Element Should Be Visible  xpath=//div[@id="aply-0-${qualification_num}"]//input[@ng-model="qualification.eligible"]
   run keyword if  '${newstatus}'=='True'  Wait Scroll Click  xpath=//div[@id="aply-0-${qualification_num}"]//input[@ng-model="qualification.eligible"]
    ...         ELSE                     Wait Scroll Click  xpath=//div[contains(@id, "aply-0-")]//input[@ng-model="qualification.eligible"]
   run keyword if  '${newstatus}'=='True'  Wait and Click     xpath=//div[@id="aply-0-${qualification_num}"]//input[@ng-model="qualification.qualified"]
@@ -2904,7 +2886,7 @@ Wait for doc upload in qualification
   Дочекатись зникнення blockUI
   Click Element  xpath=//a[contains(normalize-space(text()), "Посилання на 2-й етап")]
   Дочекатись зникнення blockUI
-  Click Element  id=update_tender_selective
+  Click Element  id=update_tender_btn
   Дочекатись зникнення blockUI
   ${new_time_value}=  Run Keyword  get_time_offset
   Input String  xpath=//input[@ng-model="updateTenderModel.tenderPeriod.endDate" and @placeholder="час"]  ${new_time_value}

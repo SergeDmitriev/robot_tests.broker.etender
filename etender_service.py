@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -
+from time import strftime
 
 from iso8601 import parse_date
 from datetime import datetime, date, time, timedelta
@@ -39,7 +40,7 @@ def get_procedure_type(methodType):
         'open_esco': 'Відкриті торги для закупівлі енергосервісу',
         'esco': 'Відкриті торги для закупівлі енергосервісу',
         'closeFrameworkAgreementUA': 'Відкриті торги для укладання рамкової угоди',
-        'open_framework': 'Відкриті торгии для укладання рамкової угоди'
+        'open_framework': 'Відкриті торги для укладання рамкової угоди'
     }[methodType].decode('utf-8')
 
 def get_method_type(procedure_name):
@@ -57,9 +58,7 @@ def get_method_type(procedure_name):
         u'конкурентний діалог з публікацією англійською мовою 1-ий етап': 'competitiveDialogueEU',
         u'конкурентний діалог з публікацією англійською мовою 2-ий етап': 'competitiveDialogueEU.stage2',
         u'відкриті торги для укладання рамкової угоди': 'closeFrameworkAgreementUA',
-        u'відкриті торгии для укладання рамкової угоди': 'open_framework'
-
-
+        u'відкриті торги для укладання рамкової угоди': 'open_framework'
 
     }[procedure_name]
 
@@ -90,15 +89,15 @@ def to_iso(date):
     return date.isoformat()
 
 
-
-
 def convert_etender_date_to_iso_format(date):
     return TZ.localize(parse_etender_date(date)).isoformat()
+
 
 def convet_fra_to_variable(raw):
     b = re.findall(r'P(\d+)Y(\d+)M(\d+)D.*', raw)
     c, d, e = b[0]
     return c, d, e
+
 
 def convet_raw_to_chack(raw):
     raw = raw.replace(' ', '')
@@ -111,6 +110,7 @@ def get_year_from_full_date(string):
     data_as_str = string.split('T')[0]
     data_as_datetime = datetime.strptime(data_as_str, '%Y-%m-%d')
     return str(data_as_datetime.year)
+
 
 def convert_date_to_etender_format(isodate):
     iso_dt = parse_date(isodate)
@@ -133,8 +133,10 @@ def convert_time_to_etender_format(isodate):
 def float_to_string_2f(value):
     return '{:.2f}'.format(value)
 
+
 def float_to_string_3f(value):
     return '{:.3f}'.format(value)
+
 
 def string_to_float(string):
     return float(string)
@@ -198,6 +200,13 @@ def get_date_10d_future():
 def get_time_offset(add_minutes=17):
     _now = datetime.now() + timedelta(minutes=add_minutes)
     return _now.time().strftime('%H:%M')
+
+
+def add_minutes_to_etender_date(date_as_str, mins=1):
+    """date_as_str like '16-09-2019, 17:09' """
+    a = datetime.strptime(date_as_str, '%d-%m-%Y, %H:%M')
+    b = a + timedelta(minutes=mins)
+    return datetime.strftime(b, '%d-%m-%Y, %H:%M')
 
 
 def convert_common_string_to_etender_string(string):
@@ -374,3 +383,14 @@ def get_modulus_from_number(number):
     elif isinstance(number, unicode):
         number = int(number)
     return abs(number)
+
+
+def get_breakdown_title_value(value):
+    return {
+        'state': u'Державний бюджет України',
+        'crimea': u'Бюджет Автономної Республіки Крим',
+        'local': u'Місцевий бюджет',
+        'own': u'Власний бюджет(кошти від господарської діяльності підприємства)',
+        'fund': u'Бюджет цільових фондів(що не входять до складу Державного або місцевого бюджетів)',
+        'loan': u'Кредити та позики міжнародних валютно - кредитних організацій',
+        'other': u'Інше'}[value]
